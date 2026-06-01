@@ -5,6 +5,16 @@ hundreds, or thousands of times. Untested documentation has the same failure
 profile as untested code — it works for you, then breaks for someone else in
 a way you never imagined.
 
+## Contents
+
+- [The cycle](#the-cycle)
+- [RED — pressure scenarios](#red--pressure-scenarios)
+- [Pressure types](#pressure-types)
+- [GREEN — minimal skill](#green--minimal-skill)
+- [REFACTOR — close loopholes](#refactor--close-loopholes)
+- [When the baseline succeeds](#when-the-baseline-succeeds)
+- [Stopping criteria](#stopping-criteria)
+
 ## The cycle
 
 | Phase | For code | For skills |

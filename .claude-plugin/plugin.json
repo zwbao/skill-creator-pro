@@ -1,0 +1,10 @@
+{
+  "name": "skill-creator-pro",
+  "version": "0.3.0",
+  "description": "A pro-grade lifecycle for creating, testing, versioning, and packaging Claude Code skills — RED, GREEN, EVAL, LINT, BUMP, OPTIMIZE-DESC, PACKAGE.",
+  "author": { "name": "zwbao" },
+  "homepage": "https://github.com/zwbao/skill-creator-pro",
+  "repository": "https://github.com/zwbao/skill-creator-pro",
+  "license": "MIT",
+  "keywords": ["skills", "skill-creator", "meta", "lint", "lifecycle", "agent-skills"]
+}

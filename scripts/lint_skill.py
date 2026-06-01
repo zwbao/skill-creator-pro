@@ -161,6 +161,11 @@ class Linter:
                          f"description is {len(desc)} chars — the YAML frontmatter has a 1024-char total budget",
                          "Trim the description; move overflow into the body",
                          file="SKILL.md")
+            if re.match(r"(?i)^\s*(i\s|i'll|i can|let me|we'll|we can)\b", desc):
+                self.add("info", "FM_DESC_PERSON",
+                         "description appears to use first person — use third person",
+                         "The description is injected into the system prompt; write it in third person",
+                         file="SKILL.md")
             desc_lower = desc.lower()
             if "use when" not in desc_lower and "triggers on" not in desc_lower:
                 self.add("warn", "FM_DESC_NO_TRIGGER",
@@ -210,11 +215,113 @@ class Linter:
             phrase in body.lower()
             for phrase in ("fully automatic", "non-interactive", "no interactive", "do not ask the user")
         )
-        if has_workflow and not mentions_askuser and not declares_noninteractive:
+        is_router = (self.dir / "workflows").is_dir() or "Workflow Index" in body
+        if has_workflow and not mentions_askuser and not declares_noninteractive and not is_router:
             self.add("info", "BODY_NO_ASKUSER",
                      "workflow does not mention AskUserQuestion — interactive skills should collect options first",
                      "Either call AskUserQuestion or explicitly declare 'fully automatic'",
                      file="SKILL.md")
+
+    def check_references(self):
+        """Anthropic official rules: references exactly one level deep; >100-line refs need a TOC."""
+        refs_dir = self.dir / "references"
+        if not refs_dir.is_dir():
+            return
+        # Nested references (>1 level deep) cause partial-read misses.
+        for md in refs_dir.rglob("*.md"):
+            rel = md.relative_to(self.dir)
+            if len(rel.parts) > 2:  # references/<sub>/<file>.md
+                self.add("warn", "REF_NESTED",
+                         f"{rel} is nested more than one level deep under references/",
+                         "Flatten to one level — nested refs get partial-read with head -100 and missed",
+                         file=str(rel))
+        # >100-line reference files must start with a table of contents.
+        for md in sorted(refs_dir.glob("*.md")):
+            lines = md.read_text(encoding="utf-8", errors="replace").splitlines()
+            if len(lines) > 100:
+                head = "\n".join(lines[:50])
+                has_toc = bool(re.search(r"(?im)^#+\s*(contents|table of contents)\b", head)) \
+                    or len(re.findall(r"\]\(#", head)) >= 3
+                if not has_toc:
+                    self.add("warn", "REF_NO_TOC",
+                             f"references/{md.name} is {len(lines)} lines (>100) but has no table of contents",
+                             "Add a '## Contents' TOC at the top so a partial read reveals full scope",
+                             file=f"references/{md.name}")
+
+    def check_router(self):
+        """Checks specific to router + workflows skills (no-op for single-file skills)."""
+        skill_md = self.dir / "SKILL.md"
+        if not skill_md.exists():
+            return
+        text = skill_md.read_text(encoding="utf-8")
+        _, body = parse_frontmatter(text)
+        workflows_dir = self.dir / "workflows"
+        workflow_files = sorted(workflows_dir.glob("*.md")) if workflows_dir.is_dir() else []
+        declares_router = "Workflow Index" in body or "Routing Rules" in body
+
+        # Not a router and no workflows/ → nothing to check.
+        if not workflow_files and not declares_router:
+            return
+
+        # Declared as a router but ships no workflows.
+        if declares_router and not workflow_files:
+            self.add("warn", "ROUTER_NO_WORKFLOWS",
+                     "SKILL.md reads like a router (has Workflow Index / Routing Rules) but workflows/ is empty or missing",
+                     "Add workflow files under workflows/, or convert to a single-file skill",
+                     file="SKILL.md")
+            return
+
+        # Workflow files exist but the router scaffolding is missing.
+        if workflow_files and not declares_router:
+            self.add("warn", "ROUTER_NO_INDEX",
+                     "workflows/ has files but SKILL.md has no 'Workflow Index' / 'Routing Rules'",
+                     "Add a Workflow Index table and Routing Rules so the agent loads only one workflow",
+                     file="SKILL.md")
+
+        # Filenames referenced in the body (e.g. workflows/foo.md).
+        referenced = set(re.findall(r"workflows/([A-Za-z0-9._-]+\.md)", body))
+        actual = {p.name for p in workflow_files}
+
+        # Dead links: referenced in body but file missing.
+        for ref in sorted(referenced - actual):
+            self.add("error", "ROUTER_DEAD_LINK",
+                     f"Workflow Index references workflows/{ref} but the file does not exist",
+                     "Create the file or fix the link", file="SKILL.md")
+
+        # Orphans: file exists but not referenced in the body.
+        for orphan in sorted(actual - referenced):
+            self.add("warn", "ROUTER_WORKFLOW_NOT_INDEXED",
+                     f"workflows/{orphan} exists but is not linked from SKILL.md — it is invisible to the router",
+                     "Add a row to the Workflow Index pointing to it", file="SKILL.md")
+
+        # Evidence Contract is strongly recommended for routers.
+        if "Evidence Contract" not in body and "Data Contract" not in body:
+            self.add("info", "ROUTER_NO_EVIDENCE_CONTRACT",
+                     "router has no Evidence Contract / Data Contract section",
+                     "Declare sources of record, fallback, and what the agent must never fabricate",
+                     file="SKILL.md")
+
+        # Per-workflow required sections.
+        for wf in workflow_files:
+            wtext = wf.read_text(encoding="utf-8", errors="replace")
+            wlower = wtext.lower()
+            rel = f"workflows/{wf.name}"
+            if "use when" not in wlower:
+                self.add("warn", "WORKFLOW_NO_USE_WHEN",
+                         f"{wf.name} has no 'Use When' section",
+                         "State the one task this workflow handles", file=rel)
+            if "output format" not in wlower and "## output" not in wlower:
+                self.add("warn", "WORKFLOW_NO_OUTPUT",
+                         f"{wf.name} has no 'Output Format' section",
+                         "Add a numbered output format so results are reproducible", file=rel)
+            if "guardrail" not in wlower:
+                self.add("info", "WORKFLOW_NO_GUARDRAILS",
+                         f"{wf.name} has no 'Guardrails' section",
+                         "Add the lines you'd most regret omitting", file=rel)
+            if re.search(r"TODO:\s", wtext):
+                self.add("error", "WORKFLOW_TODO",
+                         f"{wf.name} contains TODO placeholders",
+                         "Replace all TODOs with real content", file=rel)
 
     def check_scripts(self):
         scripts_dir = self.dir / "scripts"
@@ -244,6 +351,8 @@ class Linter:
     def run(self) -> list[dict]:
         self.check_structure()
         self.check_skill_md()
+        self.check_references()
+        self.check_router()
         self.check_scripts()
         self.check_changelog()
         return self.findings

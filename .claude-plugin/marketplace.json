@@ -1,0 +1,15 @@
+{
+  "name": "zwbao-skills",
+  "owner": { "name": "zwbao" },
+  "description": "skill-creator-pro — a pro-grade skill lifecycle, installable as one plugin.",
+  "version": "0.3.0",
+  "plugins": [
+    {
+      "name": "skill-creator-pro",
+      "source": ".",
+      "description": "Create, test, lint, version, and package Claude Code skills end to end.",
+      "version": "0.3.0",
+      "license": "MIT"
+    }
+  ]
+}

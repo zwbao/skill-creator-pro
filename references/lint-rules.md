@@ -4,6 +4,14 @@ The `scripts/lint_skill.py` script enforces a layered set of checks. Each
 finding has a severity (`error`, `warn`, `info`), a code, a message, and a
 fix hint.
 
+## Contents
+
+- [Severity policy](#severity-policy)
+- [Checks](#checks)
+- [Disabling a check](#disabling-a-check)
+- [Exit codes](#exit-codes)
+- [Running](#running)
+
 ## Severity policy
 
 | Severity | Meaning | Action |
@@ -51,6 +59,19 @@ fix hint.
   single most-tested failure mode: workflow summaries in the description
   cause the model to shortcut past the body.
 
+- `FM_DESC_PERSON` (info) — description opens in first person ("I can…",
+  "Let me…"). The description is injected into the system prompt; write it in
+  third person so discovery works.
+
+### References (Anthropic official rules)
+
+- `REF_NESTED` (warn) — a file under `references/` is more than one level deep
+  (`references/<sub>/<file>.md`). Nested references get partial-read with
+  `head -100` and missed; flatten to exactly one level.
+- `REF_NO_TOC` (warn) — a `references/*.md` over 100 lines has no table of
+  contents in its first 50 lines. Add a `## Contents` TOC so a partial read
+  still reveals the full scope.
+
 ### Frontmatter — metadata
 
 - `FM_META_MISSING` (info) — `metadata.{author,version,tags}` missing.
@@ -65,6 +86,29 @@ fix hint.
 - `BODY_NO_ASKUSER` (info) — interactive workflow doesn't reference
   `AskUserQuestion`. Either add a user-prompting step or explicitly declare
   "fully automatic" / "non-interactive" so readers know this is intentional.
+
+### Router + workflows
+
+These fire only for router-shaped skills (a `workflows/` directory exists, or
+the body has a "Workflow Index" / "Routing Rules" section). Single-file skills
+are unaffected.
+
+- `ROUTER_NO_WORKFLOWS` (warn) — SKILL.md reads like a router but `workflows/`
+  is empty or missing. Either add workflows or make it a single-file skill.
+- `ROUTER_NO_INDEX` (warn) — `workflows/` has files but SKILL.md has no Workflow
+  Index / Routing Rules. Without the index, the router can't route.
+- `ROUTER_DEAD_LINK` (error) — the body links `workflows/<x>.md` but the file
+  doesn't exist. A dead route is a ship-blocker.
+- `ROUTER_WORKFLOW_NOT_INDEXED` (warn) — a workflow file exists but isn't linked
+  from SKILL.md, so the router never reaches it. Add it to the index.
+- `ROUTER_NO_EVIDENCE_CONTRACT` (info) — the router declares no Evidence/Data
+  Contract. Recommended so workflows don't re-litigate "can I make this up?".
+- `WORKFLOW_NO_USE_WHEN` (warn) — a workflow file lacks a "Use When" section.
+  Without it the router (and the agent) can't tell when the workflow applies.
+- `WORKFLOW_NO_OUTPUT` (warn) — a workflow lacks an "Output Format" section.
+  Structured output is what makes a workflow reproducible.
+- `WORKFLOW_NO_GUARDRAILS` (info) — a workflow lacks a "Guardrails" section.
+- `WORKFLOW_TODO` (error) — a workflow file still has `TODO:` placeholders.
 
 ### Scripts
 

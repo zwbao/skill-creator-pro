@@ -7,7 +7,7 @@ compatibility: >
   and a benchmark-review HTML viewer for eval comparison.
 metadata:
   author: zwbao
-  version: "0.1.0"
+  version: "0.3.0"
   tags: meta skill-lifecycle tdd-for-docs lint semver changelog
 ---
 
@@ -51,7 +51,8 @@ BUMP: scripts/bump_version.py <name> --type <patch|minor|major> -m "..."
 OPTIMIZE TRIGGER DESC: (when accuracy matters)
   │  iterate the description against 20 trigger queries (10 should-trigger, 10 near-miss)
   ▼
-PACKAGE / SYNC: deploy to ~/.claude/skills/ or rsync to a distribution repo
+PACKAGE / SYNC: deploy to ~/.claude/skills/ — or ship a multi-platform library
+                (npx skills add + .claude/.codex/.cursor plugin manifests)
 ```
 
 **Do not skip RED.** The biggest failure mode of hand-written skills is that
@@ -72,6 +73,68 @@ Not every skill earns the full pipeline. Pick a track **before** you start:
 
 Announce the track to the user in one line: *"Going with the lightweight track
 because X."* Let them redirect.
+
+---
+
+## Decide the Skill Shape (orthogonal to track)
+
+A skill has one of two shapes. Pick before scaffolding — retrofitting is costly.
+
+| Shape | Structure | Use when |
+|-------|-----------|----------|
+| **Single-file** | one `SKILL.md` (+ `references/`, `scripts/`) | the skill does one thing, or a few tightly-related things sharing one procedure |
+| **Router + workflows** | thin router `SKILL.md` indexing `workflows/*.md`; agent loads only the selected one | **≥3 distinct user intents**, body would exceed ~400 lines of independently-invoked sections, or the capability set will grow |
+
+The router shape is how `LLMQuant/skills` ships 18 category skills and how
+meta+companion families (firefly / cancer-buddy / beacon) scale. A router is
+**progressive disclosure**: the model reads a ~40-line index + the one relevant
+workflow instead of skimming a 2000-line monolith on every near-miss. Less
+irrelevant text in context is a correctness lever, not just a cost one.
+
+Scaffold a router with `init_skill.py <name> --router` (creates the router,
+`workflows/`, a sample workflow, and multi-platform plugin manifests). Full
+guide: `references/router-and-workflows.md`. Templates:
+`templates/SKILL_ROUTER_TEMPLATE.md` + `templates/WORKFLOW_TEMPLATE.md`.
+
+---
+
+## Classify the School (capability vs discipline)
+
+Every top-tier skill is one of two schools. Classify before writing — they have
+different body structures, trigger styles, and verification methods, and
+blending them produces an incoherent skill.
+
+| | **Capability / reference** | **Discipline / process** |
+|---|---|---|
+| PRD says | "extract / convert / generate / analyze X" | "always / never / enforce / stop the agent from Z" |
+| Body | table-first, ✅/❌ code recipes, scripts, QA loop | flowchart + one Iron Law + rationalization table + red-flags |
+| Trigger | exhaustive keyword enumeration + `Do NOT` clause | minimal "Use when <moment of temptation>" |
+| Verify | mandatory "assume-failure" QA loop (fresh-eyes subagent) | RED-GREEN-REFACTOR under multi-pressure scenarios |
+
+Full taxonomy + the distilled quality bar from the top-50 starred skill repos:
+`references/top-skills-playbook.md`.
+
+---
+
+## PRD-Driven Generation (input a PRD → finished skill)
+
+When the user hands you a PRD / spec and says "build the skill", run the whole
+pipeline driven by the PRD. Do **not** stop at a draft — a PRD asks for a
+*finished, top-tier* skill.
+
+1. **Ingest & classify** — extract the PRD intake (school, shape, trigger
+   phrasings, inputs/outputs, dangerous-to-guess values, acceptance criteria,
+   target models). Missing trigger phrasings or acceptance criteria → ask the
+   user once (`AskUserQuestion`); both gaps produce a bad skill.
+2. **Derive evals from the PRD** — each acceptance criterion → ≥1 checkable
+   assertion (≥3 scenarios). Eval-first: tests before docs.
+3. **RED → scaffold → GREEN** — run the baseline, then fill SKILL.md by school,
+   applying the playbook.
+4. **Verify → LINT → OPTIMIZE-DESC → BUMP → PACKAGE** — to completion.
+5. **Report against the PRD** — list every requirement and whether the shipped
+   skill meets it, with eval evidence; be honest about anything deferred.
+
+Full procedure + the PRD intake template: `references/prd-to-skill.md`.
 
 ---
 
@@ -111,15 +174,20 @@ rationalizations.
 ### 3. GREEN — scaffold + write
 
 ```bash
-python scripts/init_skill.py <name> --dest ~/.claude/skills
+python scripts/init_skill.py <name> --dest ~/.claude/skills          # single-file
+python scripts/init_skill.py <name> --dest ~/.claude/skills --router # router + workflows
 ```
 
-This creates `<dest>/<name>/` with:
+The default creates `<dest>/<name>/` with:
 
 - `SKILL.md` — frontmatter template + TODO placeholders
 - `README.md` — human-readable, version badge, install snippet, options table
 - `scripts/` — empty; create if the skill has deterministic helpers
 - `references/` — empty; create for heavy reference material (>100 lines)
+
+`--router` instead creates a router `SKILL.md`, a `workflows/` dir with a sample
+workflow, and `.claude-plugin/` + `.codex-plugin/` + `.cursor-plugin/` manifests
+for multi-platform install. See `references/router-and-workflows.md`.
 
 Now fill `SKILL.md`:
 
@@ -148,6 +216,21 @@ Now fill `SKILL.md`:
   - Common mistakes with fixes.
   - **Explain the WHY** for every non-obvious rule. Today's models have theory
     of mind — rigid MUSTs without reasoning produce brittle compliance.
+
+- **Evidence Contract** (any skill that touches external facts — strongly
+  recommended for medical / research / financial skills). Declare three things
+  so the model never re-litigates "can I just make this up?" under pressure:
+  - **Sources of record** — the API / DB / files / tools that supply ground
+    truth. Prefer live retrieval over the model's memory.
+  - **Fallback** — if a required input is missing, name the exact missing input
+    and continue only with retrieved or user-provided evidence; never fill the
+    gap from memory.
+  - **Never fabricate** — the value types that are dangerous to guess (quotes,
+    prices, citations, lab values, dosages, trial IDs). A model synthesizing
+    these *is* the failure the contract exists to stop.
+
+  Match the contract to the domain's "things dangerous to guess". See
+  `references/router-and-workflows.md` § The Evidence Contract pattern.
 
 - **README.md** — humans read this on GitHub or in the file browser. Keep the
   version badge, install command, and a minimal usage example.
@@ -235,10 +318,20 @@ near-miss queries.
 
 - **Single-location deploy** (most users): the skill is already live in
   `~/.claude/skills/<name>/`. Verify with a fresh conversation.
-- **Shared library** (publishing to a repo): keep the source-of-truth repo,
-  `~/.claude/skills/<name>` (via symlink), and the distribution repo in sync.
-  Never let the copies drift — use `rsync` from the source whenever the
-  distribution repo is separate from the source.
+- **Multi-platform library** (shipping several skills to other people / agents):
+  lay the repo out as `skills/<name>/…` and ship plugin manifests so one command
+  installs everywhere:
+  ```bash
+  npx skills add <owner>/<repo>          # auto-detects CC / Codex / Cursor / OpenCode / …
+  npx skills add <owner>/<repo> -g --all
+  ```
+  Manifests: `.claude-plugin/plugin.json` + `marketplace.json`, `.codex-plugin/`,
+  `.cursor-plugin/`. Add `CONTRIBUTING.md` (required contract + PR checklist +
+  Conventional Commits) and a parallel `README.zh-CN.md`. Full guide:
+  `references/shipping-a-skill-library.md`.
+- **Source-of-truth sync**: keep one source repo, symlink `~/.claude/skills/<name>`,
+  and `rsync` outward to any distribution repo. Never let copies drift — an
+  installer must get the same bytes as your local source.
 
 ---
 
@@ -251,15 +344,19 @@ explaining why: *"Lightweight track, pure reference, verified by eyeballing
 the rendered output."* Forcing yourself to justify it in writing prevents
 lazy skipping.
 
-### 2. Description = "when to use", never "what it does"
+### 2. Description = what + when, **never how**
 
-Testing found that when the description summarizes the workflow, the model
-follows the description **instead of reading the skill body**. A description
-saying "performs code review between tasks" caused the model to do ONE
-review; the actual skill required TWO. Changing the description to just "Use
-when executing plans with independent tasks" fixed it.
+Anthropic's official shape is `<what it does>. Use when <triggers/keywords>.` —
+state the capability AND the triggering conditions, third person. The red line
+is the **workflow**: when the description summarizes the *steps*, the model
+follows the description **instead of reading the body**. A description saying
+"performs code review between tasks" (a how) caused the model to do ONE review;
+the skill required TWO. "Reviews code for X. Use when executing plans with
+independent tasks" (what + when) fixed it.
 
-See the rationalization table at the end of this file.
+So: name what it does and when to fire — never recite first/then/finally. The
+lint's `FM_DESC_WORKFLOW_SUMMARY` enforces the *how* red line, not the *what*.
+See `references/top-skills-playbook.md` § The description is the product.
 
 ### 3. Violating the letter = violating the spirit
 
@@ -299,6 +396,15 @@ Push back on the user — politely — if:
 
 ## Where to go next
 
+- `references/top-skills-playbook.md` — the distilled quality bar from the
+  top-50 starred skill repos: two schools, description craft, progressive-
+  disclosure hard rules, degrees of freedom, anti-patterns, pre-ship checklist.
+- `references/prd-to-skill.md` — PRD → finished top-tier skill: ingest/classify,
+  derive evals from acceptance criteria, the PRD intake template.
+- `references/router-and-workflows.md` — the two skill shapes, when to use a
+  router, anatomy of routers/workflows, the Evidence Contract pattern.
+- `references/shipping-a-skill-library.md` — multi-platform packaging (`npx
+  skills add`, plugin manifests), CONTRIBUTING contract, Conventional Commits.
 - `references/frontmatter-spec.md` — every field, when to set it, common
   mistakes.
 - `references/tdd-for-skills.md` — RED pressure scenarios, subagent prompts,

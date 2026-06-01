@@ -1,0 +1,7 @@
+{
+  "name": "skill-creator-pro",
+  "version": "0.3.0",
+  "description": "A pro-grade lifecycle for creating, testing, versioning, and packaging agent skills.",
+  "repository": "https://github.com/zwbao/skill-creator-pro",
+  "skills": "./"
+}

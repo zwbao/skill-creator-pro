@@ -4,6 +4,18 @@ The eval pipeline turns "I think this skill works" into "this skill beats
 baseline on 4/5 test cases by X%". It's the infrastructure that lets you
 iterate with real feedback instead of hunches.
 
+## Contents
+
+- [When to use](#when-to-use)
+- [Workspace layout](#workspace-layout)
+- [evals.json schema](#evalsjson-schema)
+- [Running evals](#running-evals)
+- [benchmark.json](#benchmarkjson)
+- [Reading the numbers](#reading-the-numbers)
+- [Grading](#grading)
+- [Review](#review)
+- [Feedback → iteration](#feedback--iteration)
+
 ## When to use
 
 - Full track skills (discipline, high-stakes, multi-use-case).

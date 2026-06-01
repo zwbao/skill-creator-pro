@@ -7,6 +7,7 @@ badge + install snippet), empty scripts/ and references/ dirs.
 
 Usage:
     python init_skill.py <name>                       # dest defaults to ~/.claude/skills
+    python init_skill.py <name> --router              # router + workflows/ + plugin manifests
     python init_skill.py <name> --dest ~/my-skills
     python init_skill.py <name> --dest . --author me  # custom author
     python init_skill.py <name> --force               # overwrite existing dir
@@ -78,6 +79,197 @@ TODO.
 | TODO | TODO |
 """
 
+ROUTER_SKILL_MD = """---
+name: {name}
+description: >
+  Router skill for TODO-domain workflows. Use when TODO: describe the specific
+  triggering conditions (not what it does). Triggers on "TODO: phrase 1",
+  "TODO: 中文触发短语", "TODO: adjacent phrasing". Routes to one named workflow
+  under workflows/ — never inline the procedure in this description.
+license: MIT
+category: TODO-category-slug
+metadata:
+  author: {author}
+  version: "0.1.0"
+  tags: TODO tag-a tag-b
+---
+
+# {name} Router
+
+This is the router skill for `{name}`. It does NOT perform the work itself — it
+identifies the user's task, selects the single closest workflow under
+`workflows/`, and loads only that file. Progressive disclosure keeps the router
+small and the relevant workflow focused.
+
+## Routing Rules
+
+1. Identify the task, the inputs, the scope/horizon, and the requested output.
+2. Select the single closest workflow from the index below.
+3. Open ONLY that workflow and the local resources it explicitly references.
+4. Honor the Evidence Contract below for every external fact.
+5. Report dates, source coverage, stale notices, and missing inputs.
+
+## Workflow Index
+
+| User intent | Workflow |
+|---|---|
+| TODO: one-line intent the user would actually express | [`workflows/example-workflow.md`](workflows/example-workflow.md) |
+
+> Every file in `workflows/` MUST appear here, and every row MUST point to a
+> file that exists. The lint checks both directions.
+
+## Evidence Contract
+
+- **Sources of record:** TODO — the API / DB / files / tools the workflows pull
+  from. Prefer live retrieval over memory.
+- **Fallback:** if a required input is unavailable, name the exact missing input
+  and continue only with retrieved or user-provided evidence.
+- **Never fabricate:** TODO — list the value types dangerous to guess (quotes,
+  prices, citations, lab values, dosages, IDs).
+
+## Output Requirements
+
+1. Answer / recommendation
+2. Evidence (table with sources + dates)
+3. Risks / caveats
+4. Data used, including coverage and stale notices
+"""
+
+SAMPLE_WORKFLOW_MD = """---
+name: Example Workflow
+description: TODO — one sentence; the single task this workflow performs.
+pack: TODO-optional-pack
+---
+
+# Example Workflow
+
+## Use When
+
+Use this workflow when the user asks for TODO: the one narrow task. If the
+request is broader or different, return to the router and pick another workflow.
+
+## Inputs Needed
+
+Required:
+- TODO: input + why it is needed
+
+Optional:
+- TODO: input + how it changes the output
+
+Freshness:
+- TODO: dates / as-of stamps / versions to report with the result
+
+Fallback:
+- If a required input is unavailable, name the exact missing input and continue
+  only with retrieved or user-provided evidence.
+
+## Workflow
+
+1. Confirm inputs, scope, and the output target.
+2. Retrieve / compute the required evidence.
+3. Check coverage, dates, and missing fields before interpreting.
+4. Separate retrieved evidence from interpretation.
+5. Produce the output in the format below.
+
+## Output Format
+
+1. **Answer**
+2. **Evidence**
+3. **Risks / Caveats**
+4. **Data Used**
+
+## Guardrails
+
+- Do not invent missing values; name them as gaps.
+- Do not present model output as if it were retrieved data.
+- TODO: one domain-specific guardrail.
+"""
+
+CLAUDE_PLUGIN_JSON = """{{
+  "name": "{name}",
+  "version": "0.1.0",
+  "description": "TODO: what this skill/library does.",
+  "author": {{ "name": "{author}" }},
+  "license": "MIT",
+  "keywords": ["TODO-topic", "skills"]
+}}
+"""
+
+CLAUDE_MARKETPLACE_JSON = """{{
+  "name": "{author}",
+  "owner": {{ "name": "{author}" }},
+  "description": "TODO: one line.",
+  "version": "0.1.0",
+  "plugins": [
+    {{
+      "name": "{name}",
+      "source": ".",
+      "description": "TODO: skills bundled as one plugin.",
+      "version": "0.1.0",
+      "license": "MIT"
+    }}
+  ]
+}}
+"""
+
+CODEX_PLUGIN_JSON = """{{
+  "name": "{name}",
+  "version": "0.1.0",
+  "description": "TODO: one line.",
+  "author": {{ "name": "{author}" }},
+  "license": "MIT",
+  "keywords": ["TODO-topic", "skills"],
+  "skills": "./",
+  "interface": {{
+    "displayName": "{name}",
+    "shortDescription": "TODO: short description.",
+    "developerName": "{author}",
+    "category": "TODO-category",
+    "capabilities": ["Read", "Write", "Analyze"],
+    "brandColor": "#0B5FFF",
+    "defaultPrompt": ["TODO: example invocation."]
+  }}
+}}
+"""
+
+CURSOR_PLUGIN_JSON = """{{
+  "name": "{name}",
+  "version": "0.1.0",
+  "description": "TODO: one line.",
+  "skills": "./"
+}}
+"""
+
+ROUTER_README_MD = """# {name}
+
+![Version](https://img.shields.io/badge/version-0.1.0-CC785C)
+
+TODO: One-line description for humans browsing the repo.
+
+Router-shaped skill: a thin `SKILL.md` that indexes named procedures under
+`workflows/` and loads only the one needed for the user's task.
+
+## Install
+
+```bash
+# Multi-platform (auto-detects Claude Code / Codex / Cursor / OpenCode / …):
+npx skills add <owner>/<repo>
+
+# Or drop this directory under ~/.claude/skills/:
+ln -s "$(pwd)/{name}" ~/.claude/skills/{name}
+```
+
+## Workflows
+
+| Intent | Workflow |
+|--------|----------|
+| TODO | `workflows/example-workflow.md` |
+
+## Changelog
+
+See `CHANGELOG.md` (created on first `bump_version.py` run).
+"""
+
 README_MD = """# {name}
 
 ![Version](https://img.shields.io/badge/version-0.1.0-CC785C)
@@ -123,6 +315,9 @@ def main() -> int:
     )
     ap.add_argument("--author", default=os.environ.get("USER", "unknown"),
                     help="Author name for frontmatter metadata.author")
+    ap.add_argument("--router", action="store_true",
+                    help="Scaffold a router + workflows/ skill (with plugin manifests) "
+                         "instead of a single-file skill")
     ap.add_argument("--force", action="store_true",
                     help="Overwrite existing directory (careful)")
     args = ap.parse_args()
@@ -145,16 +340,46 @@ def main() -> int:
 
     skill_dir.mkdir(parents=True, exist_ok=True)
     (skill_dir / "scripts").mkdir(exist_ok=True)
-    (skill_dir / "references").mkdir(exist_ok=True)
 
-    (skill_dir / "SKILL.md").write_text(
-        SKILL_MD.format(name=args.name, author=args.author),
-        encoding="utf-8",
-    )
-    (skill_dir / "README.md").write_text(
-        README_MD.format(name=args.name),
-        encoding="utf-8",
-    )
+    if args.router:
+        (skill_dir / "workflows").mkdir(exist_ok=True)
+        (skill_dir / "assets").mkdir(exist_ok=True)
+        (skill_dir / "SKILL.md").write_text(
+            ROUTER_SKILL_MD.format(name=args.name, author=args.author),
+            encoding="utf-8",
+        )
+        (skill_dir / "workflows" / "example-workflow.md").write_text(
+            SAMPLE_WORKFLOW_MD, encoding="utf-8",
+        )
+        (skill_dir / "README.md").write_text(
+            ROUTER_README_MD.format(name=args.name), encoding="utf-8",
+        )
+        # Multi-platform plugin manifests.
+        (skill_dir / ".claude-plugin").mkdir(exist_ok=True)
+        (skill_dir / ".claude-plugin" / "plugin.json").write_text(
+            CLAUDE_PLUGIN_JSON.format(name=args.name, author=args.author), encoding="utf-8",
+        )
+        (skill_dir / ".claude-plugin" / "marketplace.json").write_text(
+            CLAUDE_MARKETPLACE_JSON.format(name=args.name, author=args.author), encoding="utf-8",
+        )
+        (skill_dir / ".codex-plugin").mkdir(exist_ok=True)
+        (skill_dir / ".codex-plugin" / "plugin.json").write_text(
+            CODEX_PLUGIN_JSON.format(name=args.name, author=args.author), encoding="utf-8",
+        )
+        (skill_dir / ".cursor-plugin").mkdir(exist_ok=True)
+        (skill_dir / ".cursor-plugin" / "plugin.json").write_text(
+            CURSOR_PLUGIN_JSON.format(name=args.name), encoding="utf-8",
+        )
+    else:
+        (skill_dir / "references").mkdir(exist_ok=True)
+        (skill_dir / "SKILL.md").write_text(
+            SKILL_MD.format(name=args.name, author=args.author),
+            encoding="utf-8",
+        )
+        (skill_dir / "README.md").write_text(
+            README_MD.format(name=args.name),
+            encoding="utf-8",
+        )
 
     # Informational .gitignore (skills live in git often)
     (skill_dir / ".gitignore").write_text(
@@ -162,11 +387,17 @@ def main() -> int:
         encoding="utf-8",
     )
 
-    print(f"created: {skill_dir}")
+    shape = "router + workflows" if args.router else "single-file"
+    print(f"created: {skill_dir}  ({shape})")
     print(f"next steps:")
     print(f"  1. Edit {skill_dir}/SKILL.md — replace all TODOs, especially frontmatter description")
-    print(f"  2. Edit {skill_dir}/README.md — fill in options table, usage")
-    print(f"  3. (Optional) Run baseline subagent test BEFORE finalizing body")
+    if args.router:
+        print(f"  2. Edit {skill_dir}/workflows/example-workflow.md (rename it) and add more workflows")
+        print(f"     Keep the Workflow Index in SKILL.md in sync with workflows/")
+        print(f"  3. Fill in the plugin manifests (.claude-plugin / .codex-plugin / .cursor-plugin)")
+    else:
+        print(f"  2. Edit {skill_dir}/README.md — fill in options table, usage")
+        print(f"  3. (Optional) Run baseline subagent test BEFORE finalizing body")
     print(f"  4. python scripts/lint_skill.py {args.name} --dest {args.dest}")
     print(f"  5. python scripts/bump_version.py {args.name} --dest {args.dest} --type patch -m 'initial scaffold'")
     return 0

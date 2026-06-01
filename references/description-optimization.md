@@ -6,19 +6,29 @@ every skill in every conversation. So:
 
 1. **Make it accurate** — trigger when it should, skip when it shouldn't.
 2. **Make it concise** — burned context for every skill in the index.
-3. **Make it focused** — when to use, not what it does.
+3. **Make it focused** — what it does + when to use, never the how.
+
+## Contents
+
+- [The one rule](#the-one-rule)
+- [Writing the description](#writing-the-description)
+- [Description optimization loop](#description-optimization-loop)
+- [Writing good eval queries](#writing-good-eval-queries)
+- [When you can't run the optimizer](#when-you-cant-run-the-optimizer)
 
 ## The one rule
 
-> **Description = when to use, never what the skill does.**
+> **Description = what it does + when to use, never *how* it works.**
 
-Testing found that when a description summarizes the workflow ("performs code
-review between tasks"), the model follows the *description* instead of
-reading the skill body. A skill that required two review passes was
-short-circuited to one pass by its own description.
+Anthropic's official shape is `<what it does>. Use when <triggers/keywords>.` —
+naming the capability is required and helps discovery. The red line is the
+**workflow**: when a description recites the *steps* ("checks specs first, then
+code quality"), the model follows the *description* instead of reading the skill
+body. A skill that required two review passes was short-circuited to one pass by
+its own step-reciting description.
 
-**Fix**: strip workflow verbs and outcomes. Keep only the triggering
-conditions.
+**Fix**: keep the capability (what) + triggering conditions (when); strip the
+step-by-step procedure (how — any "first… then… finally…" structure).
 
 ### Good / bad examples
 

@@ -1,0 +1,28 @@
+{
+  "name": "skill-creator-pro",
+  "version": "0.3.0",
+  "description": "A pro-grade lifecycle for creating, testing, versioning, and packaging agent skills.",
+  "author": { "name": "zwbao" },
+  "homepage": "https://github.com/zwbao/skill-creator-pro",
+  "repository": "https://github.com/zwbao/skill-creator-pro",
+  "license": "MIT",
+  "keywords": ["skills", "skill-creator", "meta", "lint", "lifecycle"],
+  "skills": "./",
+  "interface": {
+    "displayName": "Skill Creator Pro",
+    "shortDescription": "Pro-grade skill lifecycle: scaffold, test, lint, version, package.",
+    "longDescription": "skill-creator-pro turns an idea or PRD into a top-tier Agent Skill: baseline-test (RED), scaffold and write (GREEN), eval against assertions, lint, semver + CHANGELOG, optimize the trigger description, and package for multi-platform install.",
+    "developerName": "zwbao",
+    "category": "Developer Tools",
+    "capabilities": ["Read", "Write", "Analyze"],
+    "websiteURL": "https://github.com/zwbao/skill-creator-pro",
+    "brandColor": "#CC785C",
+    "defaultPrompt": [
+      "Create a new skill that does X.",
+      "Iterate on this skill and bump the version.",
+      "Here's my PRD — build a top-tier skill from it.",
+      "Audit and lint this skill."
+    ],
+    "screenshots": []
+  }
+}
