@@ -280,13 +280,36 @@ class Linter:
         refs_dir = self.dir / "references"
         if not refs_dir.is_dir():
             return
+        # A skill may DECLARE reference subtrees that are legitimately structured 2-level
+        # (e.g. a per-cancer / per-entity library accessed by full path, not head -100
+        # globbing). Declaring metadata.structured_reference_dirs: [landscapes, ...]
+        # opts those subdirs out of REF_NESTED — the rule targets accidental nesting,
+        # not a deliberately keyed tree the skill reads by exact path.
+        structured = set()
+        skill_md = self.dir / "SKILL.md"
+        if skill_md.is_file():
+            fm, _ = parse_frontmatter(skill_md.read_text(encoding="utf-8", errors="replace"))
+            meta = fm.get("metadata") or {}
+            decl = meta.get("structured_reference_dirs") or []
+            if isinstance(decl, str):
+                # the lightweight frontmatter parser yields inline lists as a raw
+                # string "[a, b, c]" — normalize to a list
+                decl = [s.strip().strip("'\"") for s in
+                        decl.strip().lstrip("[").rstrip("]").split(",") if s.strip()]
+            if isinstance(decl, list):
+                structured = {str(x).strip() for x in decl if str(x).strip()}
         # Nested references (>1 level deep) cause partial-read misses.
         for md in refs_dir.rglob("*.md"):
             rel = md.relative_to(self.dir)
             if len(rel.parts) > 2:  # references/<sub>/<file>.md
+                # rel.parts == ("references", "<sub>", ...); skip declared subtrees
+                if len(rel.parts) >= 2 and rel.parts[1] in structured:
+                    continue
                 self.add("warn", "REF_NESTED",
                          f"{rel} is nested more than one level deep under references/",
-                         "Flatten to one level — nested refs get partial-read with head -100 and missed",
+                         "Flatten to one level, or declare the subtree in "
+                         "metadata.structured_reference_dirs if it's a keyed library "
+                         "read by exact path",
                          file=str(rel))
         # >100-line reference files must start with a table of contents.
         for md in sorted(refs_dir.glob("*.md")):
