@@ -3,6 +3,25 @@
 All notable changes to this skill are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · Versioning: [SemVer](https://semver.org/)
 
+## [0.5.0] - 2026-06-29
+
+### Added
+
+- Put TEETH on the prompt/script boundary — close the loop-argument gaps (prose→enforcement)
+- An adversarial completeness audit (9 Arbor build-logic principles) found 0.4.0 taught the boundary in prose but enforced only the script←judgment direction; a builder could ship a stateful harness with no observe/validate, an LLM writing state.json directly, an auto-filled judgment field, and a write-only failure log, and lint reported GREEN
+- prompt-script-boundary.md: add 'The dispatch contract — scope-bound subagents with typed returns' (E) + 'Structured search beats a bigger budget' (H); expand failures to the read-half (F: observe must render pruned reasons); make forcing-function #3 (D) operational (reminder / observe-surfaces-gap / no non-None default); split the smell test into write+read boxes
+- lint_skill.py teeth on the judgment←script direction: STATEFUL_HARNESS_NO_OBSERVE_VALIDATE, STATE_DIRECT_WRITE, SUBAGENT_NO_RETURN_CONTRACT, SCRIPT_AUTOFILL_JUDGMENT (all documented in lint-rules.md)
+- SKILL.md: expand 'moves to ship' (typed verb set + validate, failure read-half, dispatch contract, structure-over-agents); de-quarantine held-out admit (G) + honest explored-vs-merged reporting (I) into the core EVAL step + 2 rationalization-table rows
+
+## [0.4.0] - 2026-06-29
+
+### Added
+
+- Add the prompt/script boundary doctrine (harness vs brain), distilled from Arbor/HTR
+- references/prompt-script-boundary.md: the one-line rule (script = deterministic fn of state; prompt = interpret meaning/assign worth), command-by-command worked example from Arbor's tree.py, three forcing-functions (observe re-projection / validate / split mechanical-write from judgment-write), failures-as-negative-constraints, and a boundary smell test
+- SKILL.md: new 'Draw the Prompt/Script Boundary (harness vs brain)' design-decision section + Where-to-go-next pointer
+- lint_skill.py: SCRIPT_LLM_CALL (warn — LLM call inside a harness script) + SCRIPT_KEYWORD_JUDGMENT (info — domain judgment frozen as a keyword/tier collection); documented in references/lint-rules.md
+
 ## [0.3.0] - 2026-06-01
 
 ### Added

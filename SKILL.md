@@ -7,7 +7,7 @@ compatibility: >
   and a benchmark-review HTML viewer for eval comparison.
 metadata:
   author: zwbao
-  version: "0.3.0"
+  version: "0.5.0"
   tags: meta skill-lifecycle tdd-for-docs lint semver changelog
 ---
 
@@ -113,6 +113,64 @@ blending them produces an incoherent skill.
 
 Full taxonomy + the distilled quality bar from the top-50 starred skill repos:
 `references/top-skills-playbook.md`.
+
+---
+
+## Draw the Prompt/Script Boundary (harness vs brain)
+
+Any skill with **both** a `scripts/` harness and LLM steps must decide *which
+steps are hardcoded Python and which are prompt/LLM judgment*. Getting this line
+wrong is how skills rot — a script that classifies cancer types by keyword list
+breaks on the first unseen phrasing; an LLM that edits the state file directly
+drifts and corrupts it. The rule (distilled from Arbor / HTR, `tree.py`):
+
+> **Script owns everything that is a deterministic function of state** —
+> persistence, traversal, projection, integrity checks, and pure comparison of
+> values the world/LLM supplied. **Prompt owns everything that interprets
+> meaning or assigns worth** — forming a claim, judging a result, classifying
+> NL content, naming the reusable lesson.
+
+The axis is **judgment vs. determinism, not difficulty.** Classifying a tumour
+type is easy but it's judgment → prompt. Walking a tree to render it is tedious
+but pure → script. Two hard invariants: **the harness never calls an LLM**, and
+**the LLM never writes state except through the script's typed commands.** A
+script may *branch on* a value, but it must not be the thing that *judged* the
+value (no frozen keyword lists / tier-dicts / "is-this-a-recommendation" regex).
+
+The harness's job is not just the deterministic work — it is to make the brain's
+judgment reliable and un-skippable. Moves to ship:
+
+- **`observe`** — a read-only command that re-renders the *full contract*
+  (objective / done / pending / accumulated lessons / pruned reasons / current
+  best); tell the workflow to re-read it at the **start of every cycle**, so a
+  long run re-grounds on durable state, not its lossy memory.
+- **Narrow typed verb set + `validate`** — the LLM mutates state ONLY through a
+  small set of typed commands (never by editing the state file), and a
+  `validate` invariant-checker runs after mutations. Both are non-optional for a
+  stateful harness.
+- **Split mechanical-write from judgment-write** — persist a result with one
+  command, but make the *high-value abstraction* a separate, named,
+  **un-skippable** step: the mechanical command reminds, `observe` surfaces the
+  missing-judgment gap, and the judgment arg has no non-`None` default. Use
+  hardcoded structure to *force* the judgment, never to *replace* it. (And keep
+  gates **structural**: "a citation anchor exists" is a gate; "the reasoning is
+  sound" is a subagent reviewer.)
+- **Failures persist with their reason AND are read back** — store a falsified
+  direction with its reason, and have `observe` render those reasons so the next
+  ideation step avoids them. A write-only failure log nothing surfaces is worthless.
+- **Dispatched subagents get a fixed scope + a typed return contract** — each
+  executor gets one task it may not silently redefine and returns EXACTLY a set of
+  named fields (not free prose), so its hand-back is trustworthy evidence.
+- **Reach for structure, not more agents** — gains come from comparing competing
+  hypotheses and carrying lessons forward, not from a bigger fan-out. "Spawn N and
+  pick the max" is the cost lever, not the structure lever.
+
+Full doctrine, the command-by-command worked example, the dispatch contract, and
+the boundary smell test: `references/prompt-script-boundary.md`. The lint puts
+teeth on **both** directions of the boundary: `SCRIPT_LLM_CALL`,
+`SCRIPT_KEYWORD_JUDGMENT`, `SCRIPT_AUTOFILL_JUDGMENT` (script←judgment) and
+`STATEFUL_HARNESS_NO_OBSERVE_VALIDATE`, `STATE_DIRECT_WRITE`,
+`SUBAGENT_NO_RETURN_CONTRACT` (judgment←script).
 
 ---
 
@@ -241,6 +299,18 @@ Write 2-3 realistic test prompts in `evals/evals.json`, spawn **with-skill**
 and **baseline** subagents in the same turn, collect outputs into
 `<skill>-workspace/iteration-1/`, grade against assertions, aggregate into
 `benchmark.json`, review the side-by-side output, iterate.
+
+Two finishing disciplines (the same generate≠validate logic as the description
+optimizer's train/test split — they govern *every* track, not just that one):
+
+- **Held-out admit.** Iterate the skill against a **dev** subset of evals, but
+  reserve a **held-out** subset that only judges the final skill at ship time.
+  Never declare success by the eval signal you optimized against — that's
+  picking the winner by the training signal.
+- **Report honestly (no victory lap).** Report **every** eval, including the
+  ones where with-skill tied or *regressed* vs. baseline, and state the
+  explored-vs-shipped gap (assertions attempted vs. reliably passed across
+  re-runs). Surfacing only the wins is the cherry-pick failure.
 
 See `references/evals-and-benchmark.md` for the schemas, workspace layout, and
 what a benchmark review should surface.
@@ -390,6 +460,8 @@ Push back on the user — politely — if:
 | "Just this once I'll summarize the workflow in the description" | The model will shortcut past the body. This is the single most tested failure mode. |
 | "The lint warning isn't a real problem" | If you're right, fix the lint rule. If the rule is right, fix the skill. Don't suppress. |
 | "I'll bump version later" | Every change without a CHANGELOG entry is a loss of history. Bump now. |
+| "I tuned the skill until the evals passed" | Those are dev evals. Admit and report on a held-out subset, or you're picking by the signal you optimized against. |
+| "It beat baseline overall — I'll show the passing evals" | Report all cases including ties and regressions. Hiding the misses is the victory lap. |
 | "It's working for me" | A skill's job is to work for **future Claude** in conversations you won't see. Test from that stance. |
 
 ---
@@ -399,6 +471,10 @@ Push back on the user — politely — if:
 - `references/top-skills-playbook.md` — the distilled quality bar from the
   top-50 starred skill repos: two schools, description craft, progressive-
   disclosure hard rules, degrees of freedom, anti-patterns, pre-ship checklist.
+- `references/prompt-script-boundary.md` — where to draw the harness/brain line
+  (which steps are deterministic Python vs prompt/LLM judgment): the one-line
+  rule, the command-by-command worked example from Arbor, the three
+  forcing-functions (`observe` / `validate` / split-write), and the smell test.
 - `references/prd-to-skill.md` — PRD → finished top-tier skill: ingest/classify,
   derive evals from acceptance criteria, the PRD intake template.
 - `references/router-and-workflows.md` — the two skill shapes, when to use a

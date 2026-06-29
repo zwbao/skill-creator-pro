@@ -120,6 +120,51 @@ are unaffected.
   execution paths; doing it in code creates the "silent breakage" category
   of bug.
 
+### Prompt/script boundary (harness vs brain)
+
+Teeth on the boundary doctrine (`references/prompt-script-boundary.md`). They
+guard **both** directions — judgment leaking into the harness, and the harness's
+forcing-functions going un-built. A flag is a prompt to re-examine the boundary,
+not an automatic defect.
+
+Guarding **script ← judgment** (don't freeze judgment into the deterministic layer):
+
+- `SCRIPT_LLM_CALL` (warn) — a `scripts/` file imports/calls an LLM SDK (openai,
+  anthropic, litellm, `chat.completions`, …). Harness scripts must be
+  deterministic; move the judgment to a prompt/subagent, or isolate a genuine
+  model-driver layer from the state/validation scripts.
+- `SCRIPT_KEYWORD_JUDGMENT` (info) — a `scripts/` file holds a large hardcoded
+  domain-term collection (`KEYWORDS` / `CATEGORIES` / `TIER_DEFS` / `TAXONOMY` /
+  …) used for branching. Judgment frozen into code misfires on unseen phrasings;
+  route classification/extraction through a prompt or subagent.
+- `SCRIPT_AUTOFILL_JUDGMENT` (warn) — a CLI arg named `insight` / `lesson` /
+  `abstraction` / `rationale` / `summary` / `takeaway` carries a non-`None`
+  default. A judgment field with a default gets auto-filled and the model skips
+  it; leave it `None`/required so the model authors it deliberately.
+
+Guarding **judgment ← script** (the model must not own the deterministic layer):
+
+- `STATEFUL_HARNESS_NO_OBSERVE_VALIDATE` (warn) — a `scripts/` file persists a
+  state file (`json.dump` / json `write_text`) AND defines ≥2 mutating
+  subcommands (`add`/`set`/`update`/`merge`/`prune`/…) but ships no read-only
+  projection (`observe`/`status`/`render`/…) and no `validate`. A long run then
+  re-grounds on lossy memory and drifts. Add an `observe` (objective / done /
+  pending / lessons / best) + a `validate` invariant-checker.
+- `STATE_DIRECT_WRITE` (warn) — `SKILL.md` or a workflow instructs the LLM to
+  edit/write a state `*.json` / `*.yaml` / `*.db` directly (within ~3 words of a
+  "state" reference). The LLM must mutate durable state only through the
+  harness's typed commands, never by editing the file — else it drifts/corrupts
+  and can't be audited.
+- `SUBAGENT_NO_RETURN_CONTRACT` (info) — the body dispatches subagents
+  ("dispatch" / "subagent" / "fan out" / "spawn") but specifies no typed return
+  contract ("return exactly …" / named fields / schema). A free-prose hand-back
+  reintroduces judgment at the parse step; give each subagent a fixed scope and a
+  named-field return.
+
+Not linted (judgment-shaped — live as doctrine + rationalization-table rows): **H**
+structured-search-over-sampling, and **G/I** held-out admit + honest
+explored-vs-merged reporting.
+
 ### CHANGELOG
 
 - `NO_CHANGELOG` (info) — no `CHANGELOG.md`. Running `bump_version.py` once

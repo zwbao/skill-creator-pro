@@ -41,6 +41,59 @@ DESC_WORKFLOW_SMELLS = (
     " after that ",
 )
 
+# Prompt/script boundary (Arbor / HTR doctrine, references/prompt-script-boundary.md):
+# a harness script should be a deterministic function of state and must not embed
+# an LLM call (that smuggles judgment into the deterministic layer) nor freeze
+# domain judgment as a hardcoded keyword/tier collection.
+SCRIPT_LLM_CALL_PATTERNS = (
+    r"\bimport\s+openai\b",
+    r"\bfrom\s+openai\b",
+    r"\bimport\s+anthropic\b",
+    r"\bfrom\s+anthropic\b",
+    r"\bimport\s+litellm\b",
+    r"\bfrom\s+litellm\b",
+    r"\bimport\s+cohere\b",
+    r"\bgoogle\.generativeai\b",
+    r"\bfrom\s+google\s+import\s+genai\b",
+    r"\bchat[./]completions\b",
+    r"\bOpenAI\s*\(",
+    r"\bAnthropic\s*\(",
+    r"\bollama\b",
+    r"api\.minimaxi?\.com",
+)
+# Names that suggest a collection is being used as a frozen domain classifier.
+SCRIPT_JUDGMENT_NAME = re.compile(
+    r"^([A-Z0-9_]*("
+    r"KEYWORD|KEYWORDS|CATEGOR|CATEGORIES|TIER|TIERS|TIER_DEFS|LABEL|LABELS|"
+    r"TAXONOM|SYNONYM|SYNONYMS|CLASSIF|INTENT|INTENTS|ROUTE|ROUTES|CANCER_TYPES"
+    r")[A-Z0-9_]*)\s*[:=]\s*[\[{(]"
+)
+
+# A CLI arg that holds a JUDGMENT the model is supposed to author. If it carries
+# a non-None default it gets auto-filled and skipped — the no-auto-fill violation.
+JUDGMENT_ARG = re.compile(
+    r"""add_argument\(\s*["']--(insight|lesson|abstraction|rationale|summary|takeaway)["']"""
+)
+# A stateful harness is one that persists a state file AND exposes mutating
+# subcommands. Such a harness must also ship a read-only projection (observe) so
+# a long run re-grounds on durable state, not lossy memory.
+MUTATING_SUBPARSER = re.compile(
+    r"""add_parser\(\s*["'](add|set|write|update|merge|prune|init|create|append|record|remove|delete)[\w-]*["']"""
+)
+PROJECTION_SUBPARSER = re.compile(
+    r"""add_parser\(\s*["'](observe|status|show|render|state|view|list|projection|inspect)[\w-]*["']"""
+)
+# Body instruction telling the LLM to write a STATE file directly (it must only
+# mutate state through the harness's typed commands).
+STATE_DIRECT_WRITE = re.compile(
+    r"(?i)\b(edit|writ|updat|modif|overwrit)(?:e|es|ing|ed|y|ies)?\s+(?:\w+\s+){0,3}?(\S*\.(?:json|ya?ml|db))\b"
+)
+DISPATCH_WORDS = ("dispatch", "subagent", "sub-agent", "agent tool", "fan out", "fan-out", "spawn")
+RETURN_CONTRACT_WORDS = (
+    "return exactly", "report exactly", "typed return", "return contract",
+    "named fields", "final message is", "return a structured", "schema",
+)
+
 
 def parse_frontmatter(text: str) -> tuple[dict, str]:
     """Minimal YAML parser — handles flat keys, folded scalars, one-level nesting."""
@@ -339,6 +392,92 @@ class Linter:
                     self.add("info", "SCRIPT_PIP_IN_CODE",
                              f"{py.name} shells out `pip install --break-system-packages`",
                              "Put install guidance in README/SKILL.md, not in code", file=rel)
+            self.check_prompt_script_boundary(text, py.name, rel)
+
+    def check_prompt_script_boundary(self, text: str, fname: str, rel: str):
+        """Harness scripts should be a deterministic function of state — no LLM
+        call inside the deterministic layer, no domain judgment frozen as a
+        keyword/tier collection. See references/prompt-script-boundary.md."""
+        for pat in SCRIPT_LLM_CALL_PATTERNS:
+            if re.search(pat, text):
+                self.add("warn", "SCRIPT_LLM_CALL",
+                         f"{fname} appears to call an LLM from a harness script",
+                         "Harness scripts must be deterministic — move the judgment to a "
+                         "prompt/subagent. If this genuinely is the model-driver layer, "
+                         "isolate it from the state/validation scripts and say so.", file=rel)
+                break
+        for line in text.splitlines():
+            stripped = line.strip()
+            if SCRIPT_JUDGMENT_NAME.match(stripped):
+                # Count quoted string literals on/after the assignment as a cheap
+                # proxy for "this is a frozen domain vocabulary".
+                window = text[text.find(stripped):]
+                n_strings = len(re.findall(r"""(['"])(?:(?!\1).){2,}\1""", window[:1500]))
+                if n_strings >= 8:
+                    self.add("info", "SCRIPT_KEYWORD_JUDGMENT",
+                             f"{fname} holds a large hardcoded domain-term collection used for branching",
+                             "Domain judgment frozen into code misfires on unseen phrasings — "
+                             "route classification/extraction through a prompt or subagent.", file=rel)
+                    break
+
+        # no-auto-fill: a judgment-bearing CLI arg with a non-None default.
+        for m in JUDGMENT_ARG.finditer(text):
+            window = text[m.start():m.start() + 300]
+            dm = re.search(r"default\s*=\s*([^,)\n]+)", window)
+            if dm and dm.group(1).strip() not in ("None",):
+                self.add("warn", "SCRIPT_AUTOFILL_JUDGMENT",
+                         f"{fname}: judgment arg --{m.group(1)} has a non-None default",
+                         "A judgment field with a default gets auto-filled and the model skips it. "
+                         "Leave it default=None (or required); the model must author it deliberately.",
+                         file=rel)
+                break
+
+        # stateful harness with mutating subcommands but no read-only projection.
+        mut = len(MUTATING_SUBPARSER.findall(text))
+        proj = len(PROJECTION_SUBPARSER.findall(text))
+        persists = ("json.dump(" in text) or bool(re.search(r"write_text\([^)]*json", text))
+        if mut >= 2 and persists and proj == 0:
+            self.add("warn", "STATEFUL_HARNESS_NO_OBSERVE_VALIDATE",
+                     f"{fname} is a stateful harness ({mut} mutating subcommands) with no read-only observe/validate",
+                     "A long run re-grounds on lossy memory and drifts. Add an `observe` projection "
+                     "(objective/done/pending/lessons/best) + a `validate` invariant-checker; tell the "
+                     "workflow to re-read observe each cycle. See arbor tree.py.", file=rel)
+
+    def check_boundary_body(self):
+        """Guard the judgment->script direction in prose: the LLM must not be told
+        to write state files directly, and dispatched subagents need a typed return
+        contract. Scans SKILL.md + workflows/*.md."""
+        sm = self.dir / "SKILL.md"
+        bodies: list[tuple[str, str]] = []
+        if sm.exists():
+            bodies.append(("SKILL.md", sm.read_text(encoding="utf-8", errors="replace")))
+        wf = self.dir / "workflows"
+        if wf.is_dir():
+            for f in sorted(wf.glob("*.md")):
+                bodies.append((f"workflows/{f.name}", f.read_text(encoding="utf-8", errors="replace")))
+
+        for fname, text in bodies:
+            for m in STATE_DIRECT_WRITE.finditer(text):
+                fn = m.group(2).lower()
+                ctx = text[max(0, m.start() - 60):m.end() + 60].lower()
+                if "state" in fn or "state" in ctx:
+                    self.add("warn", "STATE_DIRECT_WRITE",
+                             f"{fname} instructs the LLM to write a state file directly ({m.group(0).strip()})",
+                             "The LLM must mutate durable state ONLY through the harness's typed commands, "
+                             "never by editing the state file — else it drifts/corrupts and can't be audited.",
+                             file=fname)
+                    break
+
+        if sm.exists():
+            tl = bodies[0][1].lower()
+            dispatches = any(k in tl for k in DISPATCH_WORDS)
+            has_contract = any(k in tl for k in RETURN_CONTRACT_WORDS)
+            if dispatches and not has_contract:
+                self.add("info", "SUBAGENT_NO_RETURN_CONTRACT",
+                         "body dispatches subagents but specifies no typed return contract",
+                         "Tell each dispatched subagent to return EXACTLY a fixed set of named fields "
+                         "(not free prose) and a scope it may not redefine — see the dispatch contract "
+                         "in references/prompt-script-boundary.md.", file="SKILL.md")
 
     def check_changelog(self):
         path = self.dir / "CHANGELOG.md"
@@ -354,6 +493,7 @@ class Linter:
         self.check_references()
         self.check_router()
         self.check_scripts()
+        self.check_boundary_body()
         self.check_changelog()
         return self.findings
 

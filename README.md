@@ -1,6 +1,6 @@
 # skill-creator-pro
 
-![Version](https://img.shields.io/badge/version-0.3.0-CC785C)
+![Version](https://img.shields.io/badge/version-0.5.0-CC785C)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 A pro-grade lifecycle for creating, testing, versioning, and iterating on
